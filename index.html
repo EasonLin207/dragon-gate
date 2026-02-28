@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <title>射龍門即時戰</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+
+<body>
+    <div id="app">
+        <div id="screen-lobby" class="screen">
+            <h1>🃏 射龍門</h1>
+            <button onclick="showScreen('setup')">主持遊戲</button>
+            <button onclick="showScreen('join')">加入遊戲</button>
+        </div>
+
+        <div id="screen-setup" class="screen hidden">
+            <h2>設定遊戲</h2>
+            房間號：<input type="text" id="new-room-id" value="8888"><br>
+            初始底注：<input type="number" id="init-pot" value="100"><br>
+            <button class="primary" onclick="createRoom()">建立並開始</button>
+        </div>
+
+        <div id="screen-join" class="screen hidden">
+            <h2>加入房間</h2>
+            房間號：<input type="text" id="join-room-id" value="8888"><br>
+            你的名字：<input type="text" id="player-name">
+            <button onclick="joinRoom()">加入</button>
+        </div>
+
+        <div id="screen-game" class="screen hidden">
+            <div id="current-turn-display" class="turn-display">
+                🚩 換誰的回合：<span id="turn-player-name">等待中...</span>
+            </div>
+
+            <div class="pot-box">💰 當前底池：<br><span id="display-pot">0</span></div>
+
+            <p id="game-msg">等待主持與玩家...</p>
+
+            <!-- 玩家專屬下注介面 (只有輪到自己才顯示) -->
+            <div id="player-bet-panel" class="bet-panel hidden">
+                <h3>你的回合，請下注</h3>
+                <div class="bet-shortcuts">
+                    <button id="btn-add-1" class="neutral" onclick="addBet(50)">+50</button>
+                    <button id="btn-add-2" class="neutral" onclick="addBet(100)">+100</button>
+                    <button class="danger" onclick="addBet('all')">梭哈</button>
+                </div>
+                <input type="number" id="player-bet-val" placeholder="輸入下注金額" value="100">
+                <br>
+                <button class="primary" onclick="confirmBet()">📤 確認下注</button>
+            </div>
+
+            <div id="leaderboard">
+                <h3>即時排行</h3>
+                <ul id="rank-list"></ul>
+            </div>
+
+            <!-- 主持人專屬判定介面 (只有主持人會顯示) -->
+            <div id="host-controls" class="host-panel hidden">
+                <h4>👨‍⚖️ 主持人控制台</h4>
+                <div style="margin: 15px 0; font-size: 1.1rem; color: #f1c40f;">
+                    當前玩家已下注：<span id="host-view-bet">等待下注中...</span>
+                </div>
+                <div class="btn-group">
+                    <button class="success" onclick="updateGame('win')">✅ 獲勝</button>
+                    <button class="danger" onclick="updateGame('lose')">❌ 沒中</button>
+                    <button class="neutral" onclick="updateGame('fold')">⏩ 放棄</button>
+                    <button class="warning" onclick="updateGame('hit2')">💥 撞柱 (2倍)</button>
+                    <button class="warning" onclick="updateGame('hit3')"
+                        style="background-color: #d35400; color: white;">💥 撞柱 (3倍)</button>
+                </div>
+            </div>
+        </div>
+        <script src="script.js"></script>
+</body>
+
+</html>
