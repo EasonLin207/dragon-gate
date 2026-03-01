@@ -249,13 +249,18 @@ li {
 
 .delete-room-btn {
     background-color: #e74c3c;
-    color: transparent;
+    color: #ffffff;
+    /* 改成純白字避免手機瀏覽器透明度渲染Bug */
     border: none;
-    transition: color 0.3s ease;
+    font-size: 0.9rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
 }
 
 .delete-room-btn:hover {
     color: white;
+    background-color: #c0392b;
+    /* hover 加深背景 */
 }
 
 .win-text {

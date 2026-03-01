@@ -604,6 +604,7 @@ function backToLobby() {
 
 // 呈現或隱藏歷史紀錄彈窗
 function toggleLogs() {
+    console.log("toggleLogs triggered");
     const modal = document.getElementById('logs-modal');
     if (modal) {
         if (modal.classList.contains('hidden')) {
@@ -615,3 +616,4 @@ function toggleLogs() {
         console.error("logs-modal element not found");
     }
 }
+window.toggleLogs = toggleLogs;
