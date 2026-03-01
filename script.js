@@ -10,11 +10,8 @@ let currentBetAmount = 0;
 let initPotValue = 100;
 let playersList = [];
 let currentTurnIndex = 0;
-let lastKnownTurnPlayerId = null; // 紀錄最後知道的回合玩家ID，避免重複刷新UI
+let lastKnownTurnPlayerId = null;
 let initChipsValue = 1000;
-let gameLogs = []; // 儲存當前房間的遊戲紀錄
-
-// 畫面載入時抓取紀錄
 window.onload = () => {
     renderHistoryRooms();
 }
@@ -269,12 +266,7 @@ function startSync() {
             if (payload.payload.roomId !== currentRoomId) return;
             const res = payload.payload;
 
-            // 1. 新增到歷史紀錄
-            const logItem = `<li><strong>${res.name}</strong>: ${res.actionText} <span class="${res.colorClass}">${res.prefix}${res.netChange}</span></li>`;
-            gameLogs.unshift(logItem);
-            document.getElementById('logs-list').innerHTML = gameLogs.join('');
-
-            // 2. 如果是本人的結果，顯示專屬橫幅
+            // 如果是本人的結果，顯示專屬橫幅
             if (res.playerId === myPlayerId) {
                 const prDiv = document.getElementById('personal-result');
                 prDiv.innerHTML = `${res.actionText}！你獲得了 <span class="${res.colorClass}">${res.prefix}${res.netChange}</span>`;
@@ -418,11 +410,6 @@ async function updateGame(result) {
         event: 'turn_result',
         payload: logPayload
     });
-
-    // 主持人自己也存入本地紀錄
-    const logItem = `<li><strong>${currentPlayer.name}</strong>: ${actionText} <span class="${colorClass}">${prefix}${netChange}</span></li>`;
-    gameLogs.unshift(logItem);
-    document.getElementById('logs-list').innerHTML = gameLogs.join('');
 
     // 處理資料庫更新
     if (result !== 'fold') {
@@ -601,19 +588,3 @@ function backToLobby() {
     // 刷新整個畫面回到初始狀態
     window.location.reload();
 }
-
-// 呈現或隱藏歷史紀錄彈窗
-function toggleLogs() {
-    console.log("toggleLogs triggered");
-    const modal = document.getElementById('logs-modal');
-    if (modal) {
-        if (modal.classList.contains('hidden')) {
-            modal.classList.remove('hidden');
-        } else {
-            modal.classList.add('hidden');
-        }
-    } else {
-        console.error("logs-modal element not found");
-    }
-}
-window.toggleLogs = toggleLogs;

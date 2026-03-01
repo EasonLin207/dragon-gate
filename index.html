@@ -56,9 +56,6 @@
                 style="margin-bottom: 15px; padding: 10px; border-radius: 8px; font-size: 1.2rem; font-weight: bold; text-align: center;">
             </div>
 
-            <!-- 歷史紀錄按鈕 -->
-            <button class="neutral" onclick="toggleLogs()" style="margin-bottom: 20px;">📜 遊戲紀錄</button>
-
             <p id="game-msg">等待主持與玩家...</p>
 
             <!-- 玩家專屬下注介面 (只有輪到自己才顯示) -->
@@ -110,20 +107,6 @@
                 <ul id="settlement-list"></ul>
             </div>
             <button class="primary" onclick="backToLobby()" style="margin-top: 20px;">🏠 回到大廳</button>
-        </div>
-
-        <!-- 遊戲歷史紀錄彈窗 (需放在最外層) -->
-        <div id="logs-modal" class="hidden" onclick="if(event.target.id === 'logs-modal') toggleLogs();"
-            style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 999; display: flex; align-items: center; justify-content: center; padding: 20px;">
-            <div class="screen"
-                style="max-height: 80vh; overflow-y: auto; width: 100%; max-width: 500px; position: relative;">
-                <h3 style="margin-bottom: 15px; color: #f1c40f;">📜 遊戲紀錄</h3>
-                <button onclick="toggleLogs()"
-                    style="position: absolute; top: 15px; right: 15px; padding: 5px 10px; background: transparent; color: white;">❌</button>
-                <ul id="logs-list" style="list-style: none; text-align: left; padding: 0;">
-                    <li id="empty-log-msg" style="text-align:center; color:#7f8c8d; padding:20px 0;">目前尚無遊戲紀錄...</li>
-                </ul>
-            </div>
         </div>
     </div> <!-- END of #app -->
     <script src="script.js?v=2.0"></script>
