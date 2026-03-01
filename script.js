@@ -12,6 +12,7 @@ let playersList = [];
 let currentTurnIndex = 0;
 let lastKnownTurnPlayerId = null; // 紀錄最後知道的回合玩家ID，避免重複刷新UI
 let initChipsValue = 1000;
+let gameLogs = []; // 儲存當前房間的遊戲紀錄
 
 // 畫面載入時抓取紀錄
 window.onload = () => {
@@ -77,10 +78,22 @@ function showScreen(id) {
 // 主持人：建立房間
 async function createRoom() {
     currentRoomId = document.getElementById('new-room-id').value.trim();
-    initPotValue = parseInt(document.getElementById('init-pot').value) || 100;
-    initChipsValue = parseInt(document.getElementById('init-chips').value) || 0;
-
     if (!currentRoomId) return alert("請輸入房間號");
+
+    // 【防呆】從歷史紀錄抓庫存設定，避免被輸入框覆蓋掉原本的初始底池設定
+    let history = JSON.parse(localStorage.getItem('myHostRooms')) || [];
+    let existingConf = history.find(r => (typeof r === 'string' ? r : r.id) === currentRoomId);
+
+    if (existingConf && typeof existingConf === 'object') {
+        initPotValue = existingConf.initPot || 100;
+        initChipsValue = existingConf.initChips !== undefined ? existingConf.initChips : 0;
+        // 把正確數值回填到畫面上
+        document.getElementById('init-pot').value = initPotValue;
+        document.getElementById('init-chips').value = initChipsValue;
+    } else {
+        initPotValue = parseInt(document.getElementById('init-pot').value) || 100;
+        initChipsValue = parseInt(document.getElementById('init-chips').value) || 0;
+    }
 
     // 初始底池設為 0，每當有新玩家加入時自動疊加 initPotValue
     const { error } = await _supabase.from('rooms').insert([{ id: currentRoomId, pot: 0 }]);
@@ -96,7 +109,7 @@ async function createRoom() {
     isHost = true;
 
     // 儲存至歷史紀錄 (無重複、且最新的在最前面)
-    let history = JSON.parse(localStorage.getItem('myHostRooms')) || [];
+    history = JSON.parse(localStorage.getItem('myHostRooms')) || [];
     history = history.filter(r => (typeof r === 'string' ? r : r.id) !== currentRoomId);
     history.unshift({ id: currentRoomId, initPot: initPotValue, initChips: initChipsValue });
     localStorage.setItem('myHostRooms', JSON.stringify(history));
@@ -203,6 +216,9 @@ function startSync() {
 
                 if (!isHost) {
                     if (currentTurnPlayer.id === myPlayerId) {
+                        // 輪到自己時，隱藏上一局的個人結算結果
+                        document.getElementById('personal-result').classList.add('hidden');
+
                         document.getElementById('player-bet-panel').classList.remove('hidden');
                         document.getElementById('player-bet-val').value = turnInitPot; // Reset to initPot
 
@@ -248,6 +264,22 @@ function startSync() {
         .on('broadcast', { event: 'show_settlement' }, payload => {
             if (payload.payload.roomId !== currentRoomId) return;
             renderSettlement(payload.payload.results);
+        })
+        .on('broadcast', { event: 'turn_result' }, payload => {
+            if (payload.payload.roomId !== currentRoomId) return;
+            const res = payload.payload;
+
+            // 1. 新增到歷史紀錄
+            const logItem = `<li><strong>${res.name}</strong>: ${res.actionText} <span class="${res.colorClass}">${res.prefix}${res.netChange}</span></li>`;
+            gameLogs.unshift(logItem);
+            document.getElementById('logs-list').innerHTML = gameLogs.join('');
+
+            // 2. 如果是本人的結果，顯示專屬橫幅
+            if (res.playerId === myPlayerId) {
+                const prDiv = document.getElementById('personal-result');
+                prDiv.innerHTML = `${res.actionText}！你獲得了 <span class="${res.colorClass}">${res.prefix}${res.netChange}</span>`;
+                prDiv.classList.remove('hidden');
+            }
         })
         .subscribe();
 
@@ -322,6 +354,10 @@ async function updateGame(result) {
     let newPot = room.pot;
     let newChips = currentPlayer.chips;
     let msg = "";
+    let actionText = "";
+    let netChange = 0;
+    let colorClass = "neutral";
+    let prefix = "";
 
     // 如果是放棄，直接 fold
     if (result !== 'fold') {
@@ -329,25 +365,64 @@ async function updateGame(result) {
         if (result === 'win') {
             newPot -= bet;
             newChips += bet;
+            netChange = bet;
+            actionText = "✅ 獲勝";
+            colorClass = "win-text";
+            prefix = "+";
             msg = `✅ ${currentPlayer.name} 獲勝！贏得 ${bet} (結算後底池: ${newPot})`;
         } else if (result === 'lose') {
             newPot += bet;
             newChips -= bet;
+            netChange = bet;
+            actionText = "❌ 沒中";
+            colorClass = "lose-text";
+            prefix = "-";
             msg = `❌ ${currentPlayer.name} 沒中！賠了 ${bet}`;
         } else if (result === 'hit2') {
             newPot += (bet * 2);
             newChips -= (bet * 2);
+            netChange = bet * 2;
+            actionText = "💥 撞柱(2倍)";
+            colorClass = "lose-text";
+            prefix = "-";
             msg = `💥 ${currentPlayer.name} 撞柱！賠兩倍 ${bet * 2}`;
         } else if (result === 'hit3') {
             newPot += (bet * 3);
             newChips -= (bet * 3);
+            netChange = bet * 3;
+            actionText = "💥 撞柱(3倍)";
+            colorClass = "lose-text";
+            prefix = "-";
             msg = `💥 ${currentPlayer.name} 撞柱！賠三倍 ${bet * 3}`;
         }
     } else {
+        actionText = "⏩ 放棄";
         msg = `⏩ ${currentPlayer.name} 放棄！換下一把。`;
     }
 
     document.getElementById('game-msg').innerText = msg;
+
+    // 推播結果給所有人 (包含紀錄器與個人橫幅)
+    const logPayload = {
+        roomId: currentRoomId,
+        playerId: currentPlayer.id,
+        name: currentPlayer.name,
+        actionText: actionText,
+        netChange: netChange,
+        colorClass: colorClass,
+        prefix: prefix
+    };
+
+    _supabase.channel('room_events').send({
+        type: 'broadcast',
+        event: 'turn_result',
+        payload: logPayload
+    });
+
+    // 主持人自己也存入本地紀錄
+    const logItem = `<li><strong>${currentPlayer.name}</strong>: ${actionText} <span class="${colorClass}">${prefix}${netChange}</span></li>`;
+    gameLogs.unshift(logItem);
+    document.getElementById('logs-list').innerHTML = gameLogs.join('');
 
     // 處理資料庫更新
     if (result !== 'fold') {
@@ -525,4 +600,14 @@ function renderSettlement(results) {
 function backToLobby() {
     // 刷新整個畫面回到初始狀態
     window.location.reload();
+}
+
+// 呈現或隱藏歷史紀錄彈窗
+function toggleLogs() {
+    const modal = document.getElementById('logs-modal');
+    if (modal.classList.contains('hidden')) {
+        modal.classList.remove('hidden');
+    } else {
+        modal.classList.add('hidden');
+    }
 }
