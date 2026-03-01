@@ -605,9 +605,13 @@ function backToLobby() {
 // 呈現或隱藏歷史紀錄彈窗
 function toggleLogs() {
     const modal = document.getElementById('logs-modal');
-    if (modal.classList.contains('hidden')) {
-        modal.classList.remove('hidden');
+    if (modal) {
+        if (modal.classList.contains('hidden')) {
+            modal.classList.remove('hidden');
+        } else {
+            modal.classList.add('hidden');
+        }
     } else {
-        modal.classList.add('hidden');
+        console.error("logs-modal element not found");
     }
 }
