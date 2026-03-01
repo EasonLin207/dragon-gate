@@ -18,8 +18,13 @@
 
         <div id="screen-setup" class="screen hidden">
             <h2>設定遊戲</h2>
+            <div id="history-rooms-container" class="history-list hidden">
+                <!-- 動態注入歷史房間列表 -->
+            </div>
+            <hr style="border: 0; border-top: 1px dashed rgba(255,255,255,0.2); margin: 15px 0;">
             房間號：<input type="text" id="new-room-id" value="8888"><br>
-            初始底注：<input type="number" id="init-pot" value="100"><br>
+            剛加入底池金：<input type="number" id="init-pot" value="100"><br>
+            剛加入籌碼數：<input type="number" id="init-chips" value="1000"><br>
             <button class="primary" onclick="createRoom()">建立並開始</button>
         </div>
 
@@ -35,7 +40,15 @@
                 🚩 換誰的回合：<span id="turn-player-name">等待中...</span>
             </div>
 
-            <div class="pot-box">💰 當前底池：<br><span id="display-pot">0</span></div>
+            <div id="room-warning" class="warning-box hidden">
+                ⚠️ 人數不足，等待其他玩家加入... (最少需要 2 人)
+            </div>
+
+            <div class="pot-box">
+                💰 當前底池：<br><span id="display-pot">0</span>
+                <div style="font-size:1rem; color:#bdc3c7; margin-top:5px; font-weight:normal;">(單注：<span
+                        id="display-init-pot">--</span>)</div>
+            </div>
 
             <p id="game-msg">等待主持與玩家...</p>
 
@@ -71,7 +84,23 @@
                     <button class="warning" onclick="updateGame('hit3')"
                         style="background-color: #d35400; color: white;">💥 撞柱 (3倍)</button>
                 </div>
+                <hr style="border: 0; border-top: 1px solid #333; margin: 20px 0;">
+                <div class="btn-group">
+                    <button class="danger" onclick="resetPot()">🔄 歸零底池</button>
+                    <button class="primary" onclick="manualRefill()">💰 全體補注</button>
+                    <button class="warning" onclick="endGame()" style="background-color: #9b59b6; color: white;">🏆
+                        結算遊戲</button>
+                </div>
             </div>
+        </div>
+
+        <!-- 結算畫面 (所有人同時顯示) -->
+        <div id="screen-settlement" class="screen hidden">
+            <h2>🏆 遊戲結算 🏆</h2>
+            <div id="settlement-container">
+                <ul id="settlement-list"></ul>
+            </div>
+            <button class="primary" onclick="backToLobby()" style="margin-top: 20px;">🏠 回到大廳</button>
         </div>
         <script src="script.js"></script>
 </body>

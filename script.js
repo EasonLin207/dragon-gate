@@ -11,6 +11,62 @@ let initPotValue = 100;
 let playersList = [];
 let currentTurnIndex = 0;
 let lastKnownTurnPlayerId = null; // 紀錄最後知道的回合玩家ID，避免重複刷新UI
+let initChipsValue = 1000;
+
+// 畫面載入時抓取紀錄
+window.onload = () => {
+    renderHistoryRooms();
+}
+
+function renderHistoryRooms() {
+    let history = JSON.parse(localStorage.getItem('myHostRooms')) || [];
+    const container = document.getElementById('history-rooms-container');
+
+    if (history.length > 0) {
+        container.classList.remove('hidden');
+        container.innerHTML = '<h4 style="color:#f1c40f;">📂 我的已建房間</h4>' + history.map((r, index) => {
+            const rId = typeof r === 'string' ? r : r.id;
+            const rPot = typeof r === 'string' ? 100 : r.initPot;
+            const rChips = typeof r === 'string' ? 1000 : r.initChips;
+
+            return `
+                <div class="history-item">
+                    <span>房間：<b>${rId}</b></span>
+                    <div>
+                        <button class="success" onclick="quickStartRoom('${rId}', ${rPot}, ${rChips})">加入</button>
+                        <button class="delete-room-btn" onclick="deleteHistoryRoom(${index}, '${rId}')">刪除</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } else {
+        container.classList.add('hidden');
+    }
+}
+
+async function deleteHistoryRoom(index, roomId) {
+    if (!confirm(`確定要徹底刪除房間 [${roomId}] 的所有資料嗎？`)) return;
+
+    // 刪除資料庫該房間
+    if (roomId) {
+        // 必須先砍掉該房間底下的所有玩家(若資料庫無設定 CASCADE)
+        await _supabase.from('players').delete().eq('room_id', roomId);
+        // 再砍掉房間本身
+        await _supabase.from('rooms').delete().eq('id', roomId);
+    }
+    // 刪除本地紀錄
+    let history = JSON.parse(localStorage.getItem('myHostRooms')) || [];
+    history.splice(index, 1);
+    localStorage.setItem('myHostRooms', JSON.stringify(history));
+    renderHistoryRooms();
+}
+
+function quickStartRoom(id, pot, chips) {
+    document.getElementById('new-room-id').value = id;
+    document.getElementById('init-pot').value = pot;
+    document.getElementById('init-chips').value = chips;
+    createRoom();
+}
 
 // 介面切換
 function showScreen(id) {
@@ -22,6 +78,7 @@ function showScreen(id) {
 async function createRoom() {
     currentRoomId = document.getElementById('new-room-id').value.trim();
     initPotValue = parseInt(document.getElementById('init-pot').value) || 100;
+    initChipsValue = parseInt(document.getElementById('init-chips').value) || 0;
 
     if (!currentRoomId) return alert("請輸入房間號");
 
@@ -37,6 +94,14 @@ async function createRoom() {
     }
 
     isHost = true;
+
+    // 儲存至歷史紀錄 (無重複、且最新的在最前面)
+    let history = JSON.parse(localStorage.getItem('myHostRooms')) || [];
+    history = history.filter(r => (typeof r === 'string' ? r : r.id) !== currentRoomId);
+    history.unshift({ id: currentRoomId, initPot: initPotValue, initChips: initChipsValue });
+    localStorage.setItem('myHostRooms', JSON.stringify(history));
+    renderHistoryRooms();
+
     document.getElementById('host-controls').classList.remove('hidden');
     startSync();
 }
@@ -80,6 +145,15 @@ async function joinRoom() {
 function startSync() {
     showScreen('game');
 
+    // 剛開局或剛加入時，先主動向資料庫要一次最新的底池金額，確保兩邊畫面同步
+    _supabase.from('rooms').select('pot').eq('id', currentRoomId).single().then(({ data }) => {
+        if (data) document.getElementById('display-pot').innerText = data.pot;
+    });
+
+    if (isHost) {
+        document.getElementById('display-init-pot').innerText = initPotValue;
+    }
+
     // 監聽底池更新
     _supabase.channel('room_sync')
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${currentRoomId}` }, payload => {
@@ -87,18 +161,24 @@ function startSync() {
         })
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'players', filter: `room_id=eq.${currentRoomId}` }, async payload => {
             if (isHost) {
-                // 每當有新玩家加入，由主持人自動幫房間底池增加設定好的底注！
-                let { data: room } = await _supabase.from('rooms').select('pot').eq('id', currentRoomId).single();
-                if (room) {
-                    await _supabase.from('rooms').update({ pot: room.pot + initPotValue }).eq('id', currentRoomId);
-                }
+                // 主動拿取當前最新底池
+                const { data: room } = await _supabase.from('rooms').select('pot').eq('id', currentRoomId).single();
+                const currentPot = room ? room.pot : 0;
+
+                // 將這名新玩家的底注疊加上去 (不再用 count * initPot 直接覆蓋全部，避免吃掉輸家的底池)
+                await _supabase.from('rooms').update({ pot: currentPot + initPotValue }).eq('id', currentRoomId);
+
+                // 給予新玩家初始籌碼，並自動扣除他入場的底注！
+                const newPlayerId = payload.new.id;
+                await _supabase.from('players').update({ chips: initChipsValue - initPotValue }).eq('id', newPlayerId);
             }
             refreshRank();
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'players', filter: `room_id=eq.${currentRoomId}` }, payload => {
             refreshRank();
         })
-        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'players', filter: `room_id=eq.${currentRoomId}` }, payload => {
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'players', filter: `room_id=eq.${currentRoomId}` }, async payload => {
+            // 玩家退出不退回底注，因為底注已經是場上的「死錢」
             refreshRank();
         })
         .subscribe();
@@ -106,8 +186,14 @@ function startSync() {
     // 監聽房間事件 (輪值與下注)
     _supabase.channel('room_events')
         .on('broadcast', { event: 'turn_update' }, payload => {
+            // 嚴格隔離其他房間的事件
+            if (payload.payload.roomId !== currentRoomId) return;
+
             const currentTurnPlayer = payload.payload.player || payload.payload;
             const turnInitPot = payload.payload.initPot || 100;
+
+            initPotValue = turnInitPot;
+            document.getElementById('display-init-pot').innerText = initPotValue;
 
             document.getElementById('turn-player-name').innerText = currentTurnPlayer.name;
 
@@ -146,6 +232,9 @@ function startSync() {
             }
         })
         .on('broadcast', { event: 'bet_placed' }, payload => {
+            // 嚴格隔離其他房間的事件
+            if (payload.payload.roomId !== currentRoomId) return;
+
             if (isHost) {
                 currentBetAmount = payload.payload.amount;
                 document.getElementById('host-view-bet').innerText = currentBetAmount;
@@ -155,6 +244,10 @@ function startSync() {
             } else {
                 document.getElementById('game-msg').innerText = "玩家已下注，等待主持人判定結果...";
             }
+        })
+        .on('broadcast', { event: 'show_settlement' }, payload => {
+            if (payload.payload.roomId !== currentRoomId) return;
+            renderSettlement(payload.payload.results);
         })
         .subscribe();
 
@@ -203,7 +296,7 @@ function confirmBet() {
     _supabase.channel('room_events').send({
         type: 'broadcast',
         event: 'bet_placed',
-        payload: { amount: bet, playerId: myPlayerId }
+        payload: { amount: bet, playerId: myPlayerId, roomId: currentRoomId }
     });
 }
 
@@ -255,15 +348,10 @@ async function updateGame(result) {
         await Promise.all([updateRoom, updatePlayer]);
         currentPlayer.chips = newChips; // 本地更新防閃爍
 
-        // --- 自動補池機制 ---
-        if (newPot <= 0) {
-            console.log("底池歸零！觸發自動補池！", currentRoomId, initPotValue);
-            document.getElementById('game-msg').innerText += `\n⚠️ 底池歸零，向全體扣除 ${initPotValue} 進行補池！`;
-            const { error: rpcError } = await _supabase.rpc('auto_refill_pot', {
-                target_room_id: currentRoomId,
-                refill_amount: initPotValue
-            });
-            if (rpcError) console.error("Auto Refill RPC failed: ", rpcError);
+        // --- 底池過低警告 (改為純手動) ---
+        if (newPot < playersList.length * initPotValue) {
+            console.log("底池低於安全值！請主持人手動補注", currentRoomId, initPotValue);
+            document.getElementById('game-msg').innerText += `\n⚠️ 底池過低或歸零，請主持人視情況點擊【全體補注】！`;
         }
     }
 
@@ -289,7 +377,7 @@ function broadcastTurn() {
     _supabase.channel('room_events').send({
         type: 'broadcast',
         event: 'turn_update',
-        payload: { player: currentTurnPlayer, initPot: initPotValue }
+        payload: { player: currentTurnPlayer, initPot: initPotValue, roomId: currentRoomId }
     });
 }
 
@@ -319,6 +407,16 @@ async function refreshRank() {
             return `<li><span>${p.name}</span> <span>💰${p.chips} ${kickBtn}</span></li>`;
         }).join('');
 
+        // 單人防呆防線
+        if (playersList.length <= 1) {
+            document.getElementById('room-warning').classList.remove('hidden');
+            document.getElementById('player-bet-panel').classList.add('hidden');
+            if (isHost) toggleHostButtons(true);
+            return; // 終止遊戲邏輯廣播與執行
+        } else {
+            document.getElementById('room-warning').classList.add('hidden');
+        }
+
         // 主持人每次重整都會推一次廣播，確保持晚加入的玩家能收到目前狀態
         if (isHost && playersList.length > 0) {
             broadcastTurn();
@@ -330,4 +428,87 @@ async function refreshRank() {
             if (isHost) broadcastTurn();
         }
     }
+}
+
+// 主持人：一鍵歸零
+async function resetPot() {
+    if (!confirm('確定要將底池歸零嗎？')) return;
+    await _supabase.from('rooms').update({ pot: 0 }).eq('id', currentRoomId);
+}
+
+// 主持人：全體強制手動補注
+async function manualRefill() {
+    if (!confirm(`確定要向全體玩家再次扣除 ${initPotValue} 作為預防性補注嗎？`)) return;
+
+    try {
+        const { data: room } = await _supabase.from('rooms').select('pot').eq('id', currentRoomId).single();
+        if (!room) return alert("找不到房間底池");
+
+        const totalRefill = playersList.length * initPotValue;
+        const newRoomPot = room.pot + totalRefill;
+
+        // 1. 更新房間底池
+        const updateRoomPot = _supabase.from('rooms').update({ pot: newRoomPot }).eq('id', currentRoomId);
+
+        // 2. 更新所有玩家籌碼
+        const updateAllPlayers = playersList.map(p => {
+            return _supabase.from('players').update({ chips: p.chips - initPotValue }).eq('id', p.id);
+        });
+
+        await Promise.all([updateRoomPot, ...updateAllPlayers]);
+        alert("已成功對全體強制補注！");
+    } catch (err) {
+        console.error("Manual Refill Error: ", err);
+        alert("補注失敗：" + err.message);
+    }
+}
+
+// ====== 結算遊戲邏輯 ======
+function endGame() {
+    if (!confirm('確定要結束這場遊戲並進入結算畫面嗎？所有玩家將會看到最終結果。')) return;
+
+    // 計算每位玩家的輸贏 (目前籌碼 - 初始發放的籌碼)
+    const results = playersList.map(p => {
+        const net = p.chips - initChipsValue;
+        return { name: p.name, net: net };
+    });
+
+    // 依照輸贏金額排序 (贏最多的在最上面)
+    results.sort((a, b) => b.net - a.net);
+
+    // 主持人自己也要先切換到結算畫面
+    renderSettlement(results);
+
+    // 廣播給全房間的玩家顯示結算畫面
+    _supabase.channel('room_events').send({
+        type: 'broadcast',
+        event: 'show_settlement',
+        payload: { roomId: currentRoomId, results: results }
+    });
+}
+
+function renderSettlement(results) {
+    showScreen('settlement');
+    const ul = document.getElementById('settlement-list');
+
+    ul.innerHTML = results.map(r => {
+        let colorClass = 'neutral';
+        let prefix = '';
+        if (r.net > 0) {
+            colorClass = 'win-text';
+            prefix = '+';
+        } else if (r.net < 0) {
+            colorClass = 'lose-text';
+        }
+
+        return `<li style="font-size: 1.2rem;">
+            <span>${r.name}</span> 
+            <span class="${colorClass}">${prefix}${r.net}</span>
+        </li>`;
+    }).join('');
+}
+
+function backToLobby() {
+    // 刷新整個畫面回到初始狀態
+    window.location.reload();
 }
