@@ -257,7 +257,8 @@ function startSync() {
 
 //鎖定或解開主持人的判定按鈕
 function toggleHostButtons(disabled) {
-    const btns = document.querySelectorAll('#host-controls .btn-group button');
+    // 只鎖定第一組勝負判定的按鈕，不要鎖定到下方補注或結算按鈕
+    const btns = document.querySelectorAll('#host-controls .btn-group:first-of-type button');
     btns.forEach(btn => {
         // 放棄按鈕永遠不鎖，以便卡住時可以直接跳過
         if (!btn.classList.contains('neutral')) {
@@ -304,6 +305,15 @@ function confirmBet() {
 async function updateGame(result) {
     if (playersList.length === 0) return alert("目前沒有玩家");
 
+    // 【重要防呆】在進入任何非同步(await)之前，先檢查本地注金狀態並鎖定按鈕
+    // 這樣可以防止主持人手速太快「連點兩下」導致第二次執行時 bet 變成 0 而報錯
+    if (result !== 'fold' && currentBetAmount <= 0) {
+        return alert("玩家尚未下注或下注金額無效！");
+    }
+
+    // 立即鎖定判定按鈕，直到下個玩家下注才解開
+    toggleHostButtons(true);
+
     // 取底池金額以便驗證
     let { data: room } = await _supabase.from('rooms').select('pot').eq('id', currentRoomId).single();
     if (!room) return;
@@ -313,10 +323,8 @@ async function updateGame(result) {
     let newChips = currentPlayer.chips;
     let msg = "";
 
-    // 如果是放棄，不檢查 betAmount，直接 fold
+    // 如果是放棄，直接 fold
     if (result !== 'fold') {
-        if (currentBetAmount <= 0) return alert("玩家尚未下注或下注金額無效！");
-
         const bet = currentBetAmount;
         if (result === 'win') {
             newPot -= bet;
@@ -389,6 +397,12 @@ async function kickPlayer(id) {
 }
 
 async function refreshRank() {
+    // 每次更新排名時，順便重新向資料庫抓取最新的底池金額，確保斷線/重連/漏掉推播的玩家能被強制同步
+    const { data: roomData } = await _supabase.from('rooms').select('pot').eq('id', currentRoomId).single();
+    if (roomData) {
+        document.getElementById('display-pot').innerText = roomData.pot;
+    }
+
     const { data, error } = await _supabase.from('players')
         .select('*')
         .eq('room_id', currentRoomId)
