@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>射龍門即時戰</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=2.0">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
@@ -113,7 +113,7 @@
         </div>
 
         <!-- 遊戲歷史紀錄彈窗 (需放在最外層) -->
-        <div id="logs-modal" class="hidden"
+        <div id="logs-modal" class="hidden" onclick="if(event.target.id === 'logs-modal') toggleLogs();"
             style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 999; display: flex; align-items: center; justify-content: center; padding: 20px;">
             <div class="screen"
                 style="max-height: 80vh; overflow-y: auto; width: 100%; max-width: 500px; position: relative;">
@@ -121,12 +121,12 @@
                 <button onclick="toggleLogs()"
                     style="position: absolute; top: 15px; right: 15px; padding: 5px 10px; background: transparent; color: white;">❌</button>
                 <ul id="logs-list" style="list-style: none; text-align: left; padding: 0;">
-                    <!-- 紀錄會顯示在這裡 -->
+                    <li id="empty-log-msg" style="text-align:center; color:#7f8c8d; padding:20px 0;">目前尚無遊戲紀錄...</li>
                 </ul>
             </div>
         </div>
     </div> <!-- END of #app -->
-    <script src="script.js"></script>
+    <script src="script.js?v=2.0"></script>
 </body>
 
 </html>
